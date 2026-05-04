@@ -32,6 +32,10 @@ from uc_intg_smartthings.select_entity import create_selects
 
 _LOG = logging.getLogger(__name__)
 
+# Module-level reference to the driver instance, used by select_entity.py
+# to call update_sound_mode() after a successful command.
+_driver_instance: "SmartThingsDriver | None" = None
+
 _SENSOR_CAP_MAP = {
     "temperature": ("temperatureMeasurement", "temperature"),
     "humidity": ("relativeHumidityMeasurement", "humidity"),
@@ -49,6 +53,7 @@ class SmartThingsDriver(BaseIntegrationDriver[SmartThingsDevice, SmartThingsConf
     """SmartThings integration driver using ucapi-framework."""
 
     def __init__(self):
+        global _driver_instance
         super().__init__(
             device_class=SmartThingsDevice,
             entity_classes=[
@@ -64,6 +69,7 @@ class SmartThingsDriver(BaseIntegrationDriver[SmartThingsDevice, SmartThingsConf
             driver_id="smartthings",
         )
         self._device_to_config: dict[str, str] = {}
+        _driver_instance = self
 
     def device_from_entity_id(self, entity_id: str) -> str | None:
         """Map entity ID to config identifier."""
@@ -236,10 +242,10 @@ class SmartThingsDriver(BaseIntegrationDriver[SmartThingsDevice, SmartThingsConf
                 )
 
     def _refresh_sound_mode_options(self, device_id: str) -> None:
-        """Push OPTIONS and CURRENT_OPTION to the sound-mode select entity.
+        """Push OPTIONS to the sound-mode select entity so the Remote UI shows the dropdown.
 
-        Called on every media-player poll so the Remote UI always has the
-        options list available after subscribing to the entity.
+        Only pushes OPTIONS, never overwrites CURRENT_OPTION — that is managed
+        optimistically by the command handler after a successful set.
         """
         from uc_intg_smartthings.const import SAMSUNG_SOUNDBAR_SOUND_MODES
 
@@ -247,19 +253,24 @@ class SmartThingsDriver(BaseIntegrationDriver[SmartThingsDevice, SmartThingsConf
         if not self.api.configured_entities.contains(entity_id):
             return
 
-        entity = self.api.configured_entities.get(entity_id)
-        current = (
-            entity.attributes.get(SelectAttrs.CURRENT_OPTION)
-            if entity
-            else SAMSUNG_SOUNDBAR_SOUND_MODES[0]
+        self.api.configured_entities.update_attributes(
+            entity_id,
+            {SelectAttrs.OPTIONS: SAMSUNG_SOUNDBAR_SOUND_MODES},
         )
+
+    def update_sound_mode(self, device_id: str, sound_mode: str) -> None:
+        """Update the CURRENT_OPTION of the sound-mode select entity.
+
+        Called by the command handler after a successful set so the Remote UI
+        reflects the newly selected mode.
+        """
+        entity_id = f"select.st_{device_id}_soundmode"
+        if not self.api.configured_entities.contains(entity_id):
+            return
 
         self.api.configured_entities.update_attributes(
             entity_id,
-            {
-                SelectAttrs.OPTIONS: SAMSUNG_SOUNDBAR_SOUND_MODES,
-                SelectAttrs.CURRENT_OPTION: current or SAMSUNG_SOUNDBAR_SOUND_MODES[0],
-            },
+            {SelectAttrs.CURRENT_OPTION: sound_mode},
         )
 
     def on_device_removed(

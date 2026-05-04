@@ -189,21 +189,7 @@ def _create_sound_mode_select(
     device: SmartThingsDevice,
     dev_info,
 ) -> Select | None:
-    """Create a sound-mode select entity for a Samsung soundbar device.
-
-    The entity is only created when the device exposes the OCF ``execute``
-    capability and is identified as a Samsung soundbar.
-
-    Args:
-        config: Integration configuration.
-        device: SmartThings device wrapper.
-        dev_info: :class:`~uc_intg_smartthings.config.SmartThingsDeviceInfo`
-            for the specific device.
-
-    Returns:
-        A :class:`~ucapi.select.Select` entity, or ``None`` if the device does
-        not support sound-mode switching.
-    """
+    """Create a sound-mode select entity for a Samsung soundbar device."""
     if not has_soundmode_support(dev_info.name, dev_info.capabilities):
         return None
 
@@ -257,5 +243,13 @@ async def _handle_sound_mode_select_command(
 
     success = await device.set_sound_mode(device_id, selected)
     if success:
+        # Update the entity's own attribute dict (available entity)
         entity.attributes[Attributes.CURRENT_OPTION] = selected
+        # Also update the configured entity so the Remote UI reflects the change
+        try:
+            from uc_intg_smartthings.driver import _driver_instance
+            if _driver_instance is not None:
+                _driver_instance.update_sound_mode(device_id, selected)
+        except Exception:
+            pass
     return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
