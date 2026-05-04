@@ -27,7 +27,11 @@ jobs:
       - name: Get version and id
         id: get-version-and-id
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="dev-$(echo ${GITHUB_SHA} | cut -c1-7)"
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "DRIVER_ID=$(jq .driver_id -r driver.json)" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
