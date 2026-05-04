@@ -36,6 +36,23 @@ SAMSUNG_SOUNDBAR_SOURCES = [
     "optical", "coaxial", "network", "wifi",
 ]
 
+# Sound modes available on the HW-Q995GF (and similar Q-series soundbars) via
+# the hidden OCF execute capability.
+# The API key is "x.com.samsung.networkaudio.soundmode" and the href is
+# "/sec/networkaudio/soundmode".
+# Values must match exactly what the SmartThings API expects (lowercase).
+SAMSUNG_SOUNDBAR_SOUND_MODES = [
+    "standard",
+    "surround",
+    "game pro",
+    "adaptive sound",
+]
+
+# OCF href used to read/write the sound mode
+SOUNDMODE_OCF_HREF = "/sec/networkaudio/soundmode"
+# OCF attribute key inside the payload
+SOUNDMODE_OCF_KEY = "x.com.samsung.networkaudio.soundmode"
+
 
 def has_capability(device: dict, capability: str) -> bool:
     """Check if a device has a specific capability."""
@@ -155,3 +172,14 @@ def is_samsung_soundbar(name: str, capabilities: list[str]) -> bool:
         or ("samsung" in name_lower and "q9" in name_lower)
         or ("audioVolume" in caps_set and "mediaPlayback" not in caps_set and "switch" in caps_set)
     )
+
+
+def has_soundmode_support(name: str, capabilities: list[str]) -> bool:
+    """Return True if the device supports sound-mode switching via the OCF execute capability.
+
+    Samsung soundbars expose sound-mode control through the hidden OCF
+    ``execute`` capability (href ``/sec/networkaudio/soundmode``).  We require
+    both the ``execute`` capability and the device to be identified as a
+    Samsung soundbar.
+    """
+    return is_samsung_soundbar(name, capabilities) and "execute" in capabilities

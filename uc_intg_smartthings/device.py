@@ -13,6 +13,7 @@ from ucapi_framework.device import PollingDevice, DeviceEvents
 
 from uc_intg_smartthings.client import SmartThingsClient, SmartThingsAPIError
 from uc_intg_smartthings.config import SmartThingsConfig
+from uc_intg_smartthings.const import SOUNDMODE_OCF_HREF, SOUNDMODE_OCF_KEY  # noqa: F401 (SOUNDMODE_OCF_KEY used in set_sound_mode)
 
 _LOG = logging.getLogger(__name__)
 
@@ -230,6 +231,31 @@ class SmartThingsDevice(PollingDevice):
             return True
         except SmartThingsAPIError as e:
             _LOG.error("Failed to set mode %s: %s", mode_id, e)
+            return False
+
+    async def set_sound_mode(self, device_id: str, sound_mode: str) -> bool:
+        """Set the sound mode on a Samsung soundbar via the OCF execute capability.
+
+        Args:
+            device_id: SmartThings device ID of the soundbar.
+            sound_mode: Sound mode string, e.g. ``"standard"``, ``"surround"``,
+                ``"adaptive sound"``, ``"game pro"``.
+
+        Returns:
+            ``True`` on success, ``False`` otherwise.
+        """
+        try:
+            await self.client.execute_ocf_command(
+                device_id,
+                SOUNDMODE_OCF_HREF,
+                {SOUNDMODE_OCF_KEY: sound_mode},
+            )
+            _LOG.info("Set sound mode to '%s' on device %s", sound_mode, device_id)
+            return True
+        except SmartThingsAPIError as e:
+            _LOG.error(
+                "Failed to set sound mode '%s' on device %s: %s", sound_mode, device_id, e
+            )
             return False
 
     def get_device_capability_status(

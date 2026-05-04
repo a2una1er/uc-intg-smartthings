@@ -338,3 +338,38 @@ class SmartThingsClient:
         return await self._api_request(
             "PUT", f"/locations/{location_id}/modes/current", {"modeId": mode_id}
         )
+
+    async def execute_ocf_command(
+        self,
+        device_id: str,
+        href: str,
+        payload: dict | None = None,
+        component_id: str = "main",
+    ) -> dict:
+        """Execute a hidden OCF command on a device via the ``execute`` capability.
+
+        Samsung soundbars expose extra features (sound mode, night mode, …)
+        through the OCF ``execute`` capability.
+
+        Args:
+            device_id: SmartThings device ID.
+            href: OCF resource href, e.g. ``"/sec/networkaudio/soundmode"``.
+            payload: Dict of OCF attributes to set, e.g.
+                ``{"x.com.samsung.networkaudio.soundmode": "standard"}``.
+            component_id: Device component (default ``"main"``).
+        """
+        arguments: list = [href]
+        if payload is not None:
+            arguments.append(payload)
+
+        data = {
+            "commands": [
+                {
+                    "component": component_id,
+                    "capability": "execute",
+                    "command": "execute",
+                    "arguments": arguments,
+                }
+            ]
+        }
+        return await self._api_request("POST", f"/devices/{device_id}/commands", data)

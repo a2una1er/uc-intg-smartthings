@@ -1,5 +1,5 @@
 """
-SmartThings select entity creation for scenes and modes.
+SmartThings select entity creation for scenes, modes, and soundbar sound modes.
 
 :copyright: (c) 2026 by Meir Miyara.
 :license: MPL-2.0, see LICENSE for more details.
@@ -13,6 +13,11 @@ from typing import TYPE_CHECKING
 from ucapi import StatusCodes
 from ucapi.select import Select, Attributes, States, Commands
 
+from uc_intg_smartthings.const import (
+    SAMSUNG_SOUNDBAR_SOUND_MODES,
+    has_soundmode_support,
+)
+
 if TYPE_CHECKING:
     from uc_intg_smartthings.config import SmartThingsConfig
     from uc_intg_smartthings.device import SmartThingsDevice
@@ -23,7 +28,7 @@ _SELECT_ENTITIES: dict[str, Select] = {}
 
 
 def create_selects(config: SmartThingsConfig, device: SmartThingsDevice) -> list:
-    """Create scene and mode select entities from config."""
+    """Create scene, mode, and soundbar sound-mode select entities from config."""
     entities = []
 
     scene_select = _create_scene_select(config, device)
@@ -33,6 +38,11 @@ def create_selects(config: SmartThingsConfig, device: SmartThingsDevice) -> list
     mode_select = _create_mode_select(config, device)
     if mode_select:
         entities.append(mode_select)
+
+    for dev_info in config.devices:
+        sound_mode_select = _create_sound_mode_select(config, device, dev_info)
+        if sound_mode_select:
+            entities.append(sound_mode_select)
 
     return entities
 
@@ -172,3 +182,80 @@ async def _handle_mode_select_command(
                 return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
 
     return StatusCodes.NOT_FOUND
+
+
+def _create_sound_mode_select(
+    config: SmartThingsConfig,
+    device: SmartThingsDevice,
+    dev_info,
+) -> Select | None:
+    """Create a sound-mode select entity for a Samsung soundbar device.
+
+    The entity is only created when the device exposes the OCF ``execute``
+    capability and is identified as a Samsung soundbar.
+
+    Args:
+        config: Integration configuration.
+        device: SmartThings device wrapper.
+        dev_info: :class:`~uc_intg_smartthings.config.SmartThingsDeviceInfo`
+            for the specific device.
+
+    Returns:
+        A :class:`~ucapi.select.Select` entity, or ``None`` if the device does
+        not support sound-mode switching.
+    """
+    if not has_soundmode_support(dev_info.name, dev_info.capabilities):
+        return None
+
+    sound_modes = SAMSUNG_SOUNDBAR_SOUND_MODES
+    entity_id = f"select.st_{dev_info.device_id}_soundmode"
+
+    async def cmd_handler(
+        entity: Select,
+        cmd_id: str,
+        params: dict | None,
+        _did=dev_info.device_id,
+    ) -> StatusCodes:
+        return await _handle_sound_mode_select_command(device, _did, entity, cmd_id, params)
+
+    sel = Select(
+        entity_id,
+        f"{dev_info.name} Sound Mode",
+        {
+            Attributes.STATE: States.ON,
+            Attributes.OPTIONS: sound_modes,
+            Attributes.CURRENT_OPTION: sound_modes[0],
+        },
+        cmd_handler=cmd_handler,
+        area=dev_info.room or None,
+    )
+    _SELECT_ENTITIES[entity_id] = sel
+    _LOG.info(
+        "Created sound-mode select entity for %s (%s)", dev_info.name, dev_info.device_id
+    )
+    return sel
+
+
+async def _handle_sound_mode_select_command(
+    device: SmartThingsDevice,
+    device_id: str,
+    entity: Select,
+    cmd_id: str,
+    params: dict | None,
+) -> StatusCodes:
+    """Handle select commands for the soundbar sound-mode entity."""
+    sound_modes = SAMSUNG_SOUNDBAR_SOUND_MODES
+
+    selected = _resolve_select_option(sound_modes, entity, cmd_id, params)
+    if selected is None:
+        if cmd_id not in (
+            Commands.SELECT_OPTION, Commands.SELECT_FIRST, Commands.SELECT_LAST,
+            Commands.SELECT_NEXT, Commands.SELECT_PREVIOUS,
+        ):
+            return StatusCodes.NOT_IMPLEMENTED
+        return StatusCodes.BAD_REQUEST
+
+    success = await device.set_sound_mode(device_id, selected)
+    if success:
+        entity.attributes[Attributes.CURRENT_OPTION] = selected
+    return StatusCodes.OK if success else StatusCodes.SERVER_ERROR
